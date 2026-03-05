@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 import smtplib
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -18,6 +18,29 @@ REGION_ACTIVA       = os.getenv("REGION_ACTIVA",       "LIMA")
 MONTO_MINIMO        = int(os.getenv("MONTO_MINIMO",    "0"))
 ENTIDAD_ACTIVA      = os.getenv("ENTIDAD_ACTIVA",      "TODAS")
 TIPO_PROCESO_ACTIVO = os.getenv("TIPO_PROCESO_ACTIVO", "TODAS")
+
+# ============================================================
+# FECHAS: Ultimo mes hasta hoy
+# ============================================================
+FECHA_HOY   = datetime.now()
+FECHA_INICIO = FECHA_HOY - timedelta(days=30)
+
+FECHA_HOY_STR    = FECHA_HOY.strftime("%Y-%m-%d")
+FECHA_INICIO_STR = FECHA_INICIO.strftime("%Y-%m-%d")
+
+# ============================================================
+# ESTADOS VIGENTES / ABIERTOS
+# ============================================================
+ESTADOS_VALIDOS = [
+    "CONVOCADO",
+    "EN CONVOCATORIA",
+    "ABIERTO",
+    "VIGENTE",
+    "REGISTRO DE PARTICIPANTES",
+    "EN PROCESO",
+    "PUBLICADO",
+    "ACTIVO"
+]
 
 REGIONES = {
     "LIMA": "15", "CALLAO": "07", "AREQUIPA": "04",
@@ -53,6 +76,10 @@ RUBROS = {
     ]
 }
 
+# ============================================================
+# FUNCIONES
+# ============================================================
+
 def limpiar_monto(valor):
     try:
         if valor in [None, "N/A", "", "S/N"]:
@@ -61,20 +88,68 @@ def limpiar_monto(valor):
     except:
         return 0
 
+def parsear_fecha(fecha_str):
+    if not fecha_str or fecha_str == "N/A":
+        return None
+    formatos = [
+        "%Y-%m-%d", "%d/%m/%Y", "%Y-%m-%dT%H:%M:%S",
+        "%d-%m-%Y", "%Y/%m/%d"
+    ]
+    for fmt in formatos:
+        try:
+            return datetime.strptime(str(fecha_str)[:10], fmt)
+        except:
+            continue
+    return None
+
+def es_fecha_valida(fecha_str):
+    fecha = parsear_fecha(fecha_str)
+    if not fecha:
+        return True  # Si no tiene fecha la incluimos
+    return FECHA_INICIO <= fecha <= FECHA_HOY
+
+def es_estado_valido(estado_str):
+    if not estado_str or estado_str == "N/A":
+        return True  # Si no tiene estado lo incluimos
+    estado_upper = str(estado_str).upper().strip()
+    for estado in ESTADOS_VALIDOS:
+        if estado in estado_upper:
+            return True
+    return False
+
 def aplicar_filtros(item):
+    # Filtro por entidad
     if ENTIDAD_ACTIVA != "TODAS":
         if ENTIDAD_ACTIVA not in str(item.get("entidad", "")).upper():
             return False
+
+    # Filtro por monto
     monto = limpiar_monto(item.get("valorReferencial", 0))
     if monto < MONTO_MINIMO and monto != 0:
         return False
+
+    # Filtro por tipo de proceso
     if TIPO_PROCESO_ACTIVO != "TODAS":
         if TIPO_PROCESO_ACTIVO not in str(item.get("tipoProceso", "")).upper():
             return False
+
+    # Filtro por fecha (ultimo mes)
+    fecha = item.get("fechaConvocatoria", item.get("fecha", ""))
+    if not es_fecha_valida(fecha):
+        return False
+
+    # Filtro por estado vigente/abierto
+    estado = item.get("estadoProceso", item.get("estado", ""))
+    if not es_estado_valido(estado):
+        return False
+
     return True
 
 def buscar_en_seace():
     print(f"\nBuscando... {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    print(f"Periodo    : {FECHA_INICIO_STR} al {FECHA_HOY_STR}")
+    print(f"Estado     : VIGENTE / ABIERTO")
+
     todos_resultados = {rubro: [] for rubro in RUBROS.keys()}
     todos_resultados["Todos los Rubros"] = []
 
@@ -87,10 +162,12 @@ def buscar_en_seace():
         print(f"Consultando SEACE - Region: {REGION_ACTIVA}...")
         url = "https://prod4.seace.gob.pe/openegocio/api/v1/proceso/listar"
         payload = {
-            "descripcion": "",
-            "codigoDepartamento": REGIONES.get(REGION_ACTIVA, "15"),
-            "pagina": 1,
-            "cantidad": 500
+            "descripcion"        : "",
+            "codigoDepartamento" : REGIONES.get(REGION_ACTIVA, "15"),
+            "pagina"             : 1,
+            "cantidad"           : 500,
+            "fechaInicio"        : FECHA_INICIO_STR,
+            "fechaFin"           : FECHA_HOY_STR
         }
         resp = requests.post(url, json=payload, headers=headers, timeout=20)
 
@@ -100,45 +177,53 @@ def buscar_en_seace():
                     data.get("items", data.get("result", []))))
 
             if isinstance(items, list):
-                print(f"  {len(items)} procesos encontrados")
+                print(f"  {len(items)} procesos encontrados en SEACE")
+                filtrados = 0
                 for item in items:
                     if not aplicar_filtros(item):
                         continue
+                    filtrados += 1
                     descripcion = str(
                         item.get("descripcionObjeto", "") or
                         item.get("descripcion", "") or
                         item.get("objeto", "")
                     ).lower()
-                    monto = limpiar_monto(item.get("valorReferencial", 0))
+
+                    monto  = limpiar_monto(item.get("valorReferencial", 0))
+                    fecha  = item.get("fechaConvocatoria", item.get("fecha", "N/A"))
+                    estado = item.get("estadoProceso", item.get("estado", "N/A"))
+
                     registro = {
-                        "Entidad": item.get("entidad",
-                                   item.get("nombreEntidad", "N/A")),
-                        "Descripcion": item.get("descripcionObjeto",
-                                       item.get("descripcion", "N/A")),
-                        "Valor S/.": f"S/. {monto:,.2f}" if monto > 0 else "N/A",
-                        "Fecha": item.get("fechaConvocatoria",
-                                 item.get("fecha", "N/A")),
-                        "Region": REGION_ACTIVA,
-                        "Tipo Proceso": item.get("tipoProceso",
-                                        item.get("tipo", "N/A")),
-                        "Estado": item.get("estadoProceso",
-                                  item.get("estado", "N/A")),
-                        "Fuente": "SEACE - Oportunidades de Negocio"
+                        "Entidad"      : item.get("entidad",
+                                         item.get("nombreEntidad", "N/A")),
+                        "Descripcion"  : item.get("descripcionObjeto",
+                                         item.get("descripcion", "N/A")),
+                        "Valor S/."    : f"S/. {monto:,.2f}" if monto > 0 else "N/A",
+                        "Fecha"        : fecha,
+                        "Estado"       : estado,
+                        "Region"       : REGION_ACTIVA,
+                        "Tipo Proceso" : item.get("tipoProceso",
+                                         item.get("tipo", "N/A")),
+                        "Fuente"       : "SEACE - Oportunidades de Negocio"
                     }
+
                     encontrado = False
                     for rubro, palabras in RUBROS.items():
                         for palabra in palabras:
                             if palabra.lower() in descripcion:
                                 registro["Palabra Clave"] = palabra
-                                registro["Rubro"] = rubro
+                                registro["Rubro"]         = rubro
                                 todos_resultados[rubro].append(registro)
                                 todos_resultados["Todos los Rubros"].append(registro)
                                 encontrado = True
                                 break
                         if encontrado:
                             break
+
+                print(f"  {filtrados} procesos vigentes en el ultimo mes")
         else:
             print(f"  Codigo: {resp.status_code}")
+
     except Exception as e:
         print(f"  Error: {e}")
 
@@ -152,23 +237,23 @@ def buscar_en_seace():
     return todos_resultados
 
 def aplicar_estilo_excel(ws, color_header):
-    fill = PatternFill("solid", fgColor=color_header)
+    fill   = PatternFill("solid", fgColor=color_header)
     fuente = Font(bold=True, color="FFFFFF", size=11)
-    borde = Border(
+    borde  = Border(
         left=Side(style="thin"), right=Side(style="thin"),
-        top=Side(style="thin"), bottom=Side(style="thin")
+        top=Side(style="thin"),  bottom=Side(style="thin")
     )
     for cell in ws[1]:
-        cell.fill = fill
-        cell.font = fuente
+        cell.fill      = fill
+        cell.font      = fuente
         cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = borde
+        cell.border    = borde
     for row in ws.iter_rows(min_row=2):
         for cell in row:
-            cell.border = borde
+            cell.border    = borde
             cell.alignment = Alignment(horizontal="left", vertical="center")
     for col in ws.columns:
-        max_len = 0
+        max_len    = 0
         col_letter = get_column_letter(col[0].column)
         for cell in col:
             try:
@@ -181,9 +266,9 @@ def aplicar_estilo_excel(ws, color_header):
         ws.row_dimensions[row[0].row].height = 20
 
 def guardar_excel_pestanas(resultados):
-    fecha_hoy = datetime.now().strftime("%Y-%m-%d")
+    fecha_hoy      = datetime.now().strftime("%Y-%m-%d")
     nombre_archivo = f"SEACE_Oportunidades_{fecha_hoy}.xlsx"
-    ruta = os.path.join("/tmp", nombre_archivo)
+    ruta           = os.path.join("/tmp", nombre_archivo)
 
     colores = {
         "Todos los Rubros": "1a73e8",
@@ -198,13 +283,15 @@ def guardar_excel_pestanas(resultados):
         for rubro, lista in resultados.items():
             if rubro != "Todos los Rubros":
                 resumen_data.append({
-                    "Rubro"        : rubro,
-                    "Oportunidades": len(lista),
-                    "Mayor Monto"  : max(
+                    "Rubro"          : rubro,
+                    "Oportunidades"  : len(lista),
+                    "Mayor Monto S/.": max(
                         [limpiar_monto(r.get("Valor S/.", 0))
                          for r in lista], default=0),
-                    "Fecha Reporte": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Region"       : REGION_ACTIVA,
+                    "Periodo"        : f"{FECHA_INICIO_STR} al {FECHA_HOY_STR}",
+                    "Estado Filtro"  : "VIGENTE / ABIERTO",
+                    "Region"         : REGION_ACTIVA,
+                    "Fecha Reporte"  : datetime.now().strftime("%d/%m/%Y %H:%M"),
                 })
         pd.DataFrame(resumen_data).to_excel(
             writer, sheet_name="Resumen", index=False)
@@ -214,15 +301,16 @@ def guardar_excel_pestanas(resultados):
             if lista:
                 df = pd.DataFrame(lista)
                 df = df.drop_duplicates(subset=["Descripcion"])
+                df = df.sort_values("Fecha", ascending=False)
                 df.to_excel(writer, sheet_name=nombre_hoja, index=False)
             else:
                 pd.DataFrame([{
-                    "Mensaje": f"Sin oportunidades para {rubro} hoy"
+                    "Mensaje": f"Sin oportunidades vigentes para {rubro}"
                 }]).to_excel(writer, sheet_name=nombre_hoja, index=False)
 
     wb = load_workbook(ruta)
     for nombre_hoja in wb.sheetnames:
-        ws = wb[nombre_hoja]
+        ws    = wb[nombre_hoja]
         color = colores.get(nombre_hoja, "1a73e8")
         aplicar_estilo_excel(ws, color)
     wb.save(ruta)
@@ -233,20 +321,21 @@ def enviar_correo(resultados, ruta_excel):
     print("\nEnviando correo...")
     try:
         total = len(resultados.get("Todos los Rubros", []))
-        msg = MIMEMultipart("alternative")
+        msg   = MIMEMultipart("alternative")
         msg["Subject"] = (
-            f"SEACE - {total} Oportunidades "
+            f"SEACE - {total} Oportunidades VIGENTES "
             f"{datetime.now().strftime('%d/%m/%Y')}"
         )
         msg["From"] = CORREO_REMITENTE
-        msg["To"] = CORREO_DESTINO
+        msg["To"]   = CORREO_DESTINO
 
         filas_resumen = ""
         for rubro, lista in resultados.items():
             if rubro != "Todos los Rubros":
                 filas_resumen += f"""
                 <tr>
-                    <td style='padding:8px;border:1px solid #ddd'>{rubro}</td>
+                    <td style='padding:8px;border:1px solid #ddd'>
+                        {rubro}</td>
                     <td style='padding:8px;border:1px solid #ddd;
                                text-align:center;font-weight:bold;
                                color:#1a73e8'>{len(lista)}</td>
@@ -263,6 +352,8 @@ def enviar_correo(resultados, ruta_excel):
                 <td style='padding:8px;border:1px solid #ddd'>
                     {op.get('Valor S/.','N/A')}</td>
                 <td style='padding:8px;border:1px solid #ddd'>
+                    {op.get('Estado','N/A')}</td>
+                <td style='padding:8px;border:1px solid #ddd'>
                     {op.get('Rubro','N/A')}</td>
             </tr>"""
 
@@ -273,10 +364,14 @@ def enviar_correo(resultados, ruta_excel):
                     Monitor SEACE - Reporte Diario</h2>
                 <p style='color:white;margin:5px 0'>
                     Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')} |
-                    Region: {REGION_ACTIVA} |
-                    Monto minimo: S/. {MONTO_MINIMO:,}
+                    Region: {REGION_ACTIVA}
+                </p>
+                <p style='color:white;margin:5px 0'>
+                    Periodo: {FECHA_INICIO_STR} al {FECHA_HOY_STR} |
+                    Estado: VIGENTE / ABIERTO
                 </p>
             </div><br>
+
             <h3>Resumen por Rubro</h3>
             <table style='border-collapse:collapse;width:100%'>
                 <thead>
@@ -289,28 +384,34 @@ def enviar_correo(resultados, ruta_excel):
                 </thead>
                 <tbody>{filas_resumen}</tbody>
                 <tfoot>
-                    <tr style='background:#1a73e8;color:white;font-weight:bold'>
-                        <td style='padding:10px;border:1px solid #ddd'>TOTAL</td>
+                    <tr style='background:#1a73e8;color:white;
+                               font-weight:bold'>
+                        <td style='padding:10px;border:1px solid #ddd'>
+                            TOTAL</td>
                         <td style='padding:10px;border:1px solid #ddd;
                                    text-align:center'>{total}</td>
                     </tr>
                 </tfoot>
             </table><br>
-            <h3>Top 5 Oportunidades</h3>
+
+            <h3>Top 5 Oportunidades Vigentes</h3>
             <table style='border-collapse:collapse;width:100%'>
                 <thead>
                     <tr style='background:#1a73e8;color:white'>
                         <th style='padding:10px'>Entidad</th>
                         <th style='padding:10px'>Descripcion</th>
                         <th style='padding:10px'>Monto</th>
+                        <th style='padding:10px'>Estado</th>
                         <th style='padding:10px'>Rubro</th>
                     </tr>
                 </thead>
                 <tbody>{top_oportunidades}</tbody>
             </table><br>
+
             <div style='background:#f8f9fa;padding:15px;border-radius:8px'>
                 <p style='margin:0;color:#555'>
                     Excel adjunto con pestanas por rubro<br>
+                    Resultados ordenados del mas reciente al mas antiguo<br>
                     <a href='https://prod4.seace.gob.pe/openegocio'>
                         Ver SEACE directamente</a><br>
                     Generado automaticamente con GitHub Actions
@@ -345,9 +446,9 @@ if __name__ == "__main__":
     print("=" * 55)
     print(f"Alertas a    : {CORREO_DESTINO}")
     print(f"Region       : {REGION_ACTIVA}")
+    print(f"Periodo      : {FECHA_INICIO_STR} al {FECHA_HOY_STR}")
+    print(f"Estado       : VIGENTE / ABIERTO")
     print(f"Monto minimo : S/. {MONTO_MINIMO:,}")
-    print(f"Tipo entidad : {ENTIDAD_ACTIVA}")
-    print(f"Tipo proceso : {TIPO_PROCESO_ACTIVO}")
     print(f"Rubros       : {len(RUBROS)}")
     print("=" * 55)
 
