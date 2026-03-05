@@ -43,27 +43,27 @@ REGIONES = {
 
 # 🔑 PALABRAS CLAVE POR RUBRO
 RUBROS = {
-    "💻 Tecnología": [
+    "Tecnologia": [
         "laptop", "computadora", "computador", "pc", "impresora",
         "monitor", "teclado", "mouse", "disco duro", "memoria ram",
         "tablet", "proyector", "servidor", "ups", "switch",
         "router", "scanner", "toner", "cartucho", "cpu",
         "equipo informatico", "equipo de computo"
     ],
-    "🧹 Limpieza": [
+    "Limpieza": [
         "servicio de limpieza", "limpieza", "desinfeccion",
-        "desinfección", "aseo", "utiles de limpieza",
+        "desinfeccion", "aseo", "utiles de limpieza",
         "mantenimiento de limpieza", "higiene", "saneamiento",
-        "fumigacion", "fumigación", "desratizacion"
+        "fumigacion", "fumigacion", "desratizacion"
     ],
-    "🖥️ Cómputo / TI": [
+    "Computo y TI": [
         "mantenimiento de computo", "soporte tecnico",
         "mantenimiento informatico", "reparacion de equipos",
         "instalacion de software", "redes", "cableado",
         "mantenimiento preventivo", "servicio informatico",
         "sistema", "software", "hardware", "infraestructura ti"
     ],
-    "🔧 Ferretería": [
+    "Ferreteria": [
         "ferreteria", "herramientas", "materiales de construccion",
         "pintura", "tuberias", "cables electricos",
         "candado", "cerradura", "tornillos", "taladro",
@@ -71,6 +71,7 @@ RUBROS = {
         "material ferretero", "equipos de seguridad industrial"
     ]
 }
+
 
 # ============================================================
 # 🔧 FUNCIONES
@@ -107,7 +108,7 @@ def buscar_en_seace():
     print(f"\n🔍 Buscando... {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
     todos_resultados = {rubro: [] for rubro in RUBROS.keys()}
-    todos_resultados["📊 Todos los Rubros"] = []
+    todos_resultados["Todos los Rubros"] = []
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -174,8 +175,10 @@ def buscar_en_seace():
                             if palabra.lower() in descripcion:
                                 registro["🔑 Palabra Clave"] = palabra
                                 registro["📁 Rubro"]         = rubro
-                                todos_resultados[rubro].append(registro)
                                 todos_resultados[
+    "Todos los Rubros"
+].append(registro)
+
                                     "📊 Todos los Rubros"
                                 ].append(registro)
                                 encontrado = True
@@ -192,7 +195,7 @@ def buscar_en_seace():
     print("\n📊 RESUMEN POR RUBRO:")
     print("-" * 40)
     for rubro, lista in todos_resultados.items():
-        if rubro != "📊 Todos los Rubros":
+    if rubro != "Todos los Rubros":
             print(f"  {rubro}: {len(lista)} oportunidades")
     print(f"  📊 TOTAL: "
           f"{len(todos_resultados['📊 Todos los Rubros'])} oportunidades")
@@ -244,18 +247,19 @@ def guardar_excel_pestanas(resultados):
     ruta           = os.path.join("/tmp", nombre_archivo)
 
     colores = {
-        "📊 Todos los Rubros": "1a73e8",
-        "💻 Tecnología"      : "0f9d58",
-        "🧹 Limpieza"        : "f4b400",
-        "🖥️ Cómputo / TI"   : "4285f4",
-        "🔧 Ferretería"      : "db4437"
-    }
+    "Todos los Rubros": "1a73e8",
+    "Tecnologia"      : "0f9d58",
+    "Limpieza"        : "f4b400",
+    "Computo y TI"    : "4285f4",
+    "Ferreteria"      : "db4437"
+}
+
 
     with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
         # Pestaña Resumen
         resumen_data = []
-        for rubro, lista in resultados.items():
-            if rubro != "📊 Todos los Rubros":
+        for rubro, lista in todos_resultados.items():
+    if rubro != "Todos los Rubros":
                 resumen_data.append({
                     "📁 Rubro"        : rubro,
                     "🔢 Oportunidades": len(lista),
@@ -300,7 +304,7 @@ def guardar_excel_pestanas(resultados):
 def enviar_correo(resultados, ruta_excel):
     print("\n📧 Enviando correo...")
     try:
-        total = len(resultados.get("📊 Todos los Rubros", []))
+        total = len(resultados.get("Todos los Rubros", []))
 
         msg            = MIMEMultipart("alternative")
         msg["Subject"] = (
@@ -324,7 +328,7 @@ def enviar_correo(resultados, ruta_excel):
                 """
 
         top_oportunidades = ""
-        for op in resultados.get("📊 Todos los Rubros", [])[:5]:
+        for op in resultados.get("Todos los Rubros", [])[:5]:
             top_oportunidades += f"""
             <tr>
                 <td style='padding:8px;border:1px solid #ddd'>
@@ -458,4 +462,5 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(60)
+
 
