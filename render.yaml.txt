@@ -1,7 +1,0 @@
-services:
-  - type: worker
-    name: seace-monitor
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python seace_monitor.py
-    plan: free
