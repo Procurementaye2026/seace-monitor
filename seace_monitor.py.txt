@@ -21,9 +21,9 @@ load_dotenv()
 # ✏️ CONFIGURACIÓN DESDE VARIABLES DE ENTORNO
 # ============================================================
 
-CORREO_REMITENTE    = os.getenv("CORREO_REMITENTE",    "tucorreo@gmail.com")
-CORREO_CONTRASENA   = os.getenv("CORREO_CONTRASENA",   "")
-CORREO_DESTINO      = os.getenv("CORREO_DESTINO",      "tucorreo@gmail.com")
+CORREO_REMITENTE    = os.getenv("CORREO_REMITENTE",    "adelazerpa91@gmail.com")
+CORREO_CONTRASENA   = os.getenv("CORREO_CONTRASENA",   "2329 2570")
+CORREO_DESTINO      = os.getenv("CORREO_DESTINO",      "adelazerpa91@gmail.com")
 HORA_ENVIO          = os.getenv("HORA_ENVIO",          "08:00")
 REGION_ACTIVA       = os.getenv("REGION_ACTIVA",       "LIMA")
 MONTO_MINIMO        = int(os.getenv("MONTO_MINIMO",    "0"))
@@ -458,3 +458,4 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(60)
+
