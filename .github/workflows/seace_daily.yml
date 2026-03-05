@@ -1,0 +1,40 @@
+name: 🏛️ SEACE Monitor Diario
+
+on:
+  schedule:
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  buscar-licitaciones:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: 🔍 Ejecutar Monitor SEACE
+        env:
+          CORREO_REMITENTE    : ${{ secrets.CORREO_REMITENTE }}
+          CORREO_CONTRASENA   : ${{ secrets.CORREO_CONTRASENA }}
+          CORREO_DESTINO      : ${{ secrets.CORREO_DESTINO }}
+          REGION_ACTIVA       : ${{ secrets.REGION_ACTIVA }}
+          MONTO_MINIMO        : ${{ secrets.MONTO_MINIMO }}
+          ENTIDAD_ACTIVA      : ${{ secrets.ENTIDAD_ACTIVA }}
+          TIPO_PROCESO_ACTIVO : ${{ secrets.TIPO_PROCESO_ACTIVO }}
+        run: python seace_monitor.py
+
+      - name: 📊 Guardar Excel como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEACE-Reporte-${{ github.run_number }}
+          path: /tmp/SEACE_Oportunidades_*.xlsx
+          retention-days: 7
