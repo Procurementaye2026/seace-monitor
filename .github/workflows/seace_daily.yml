@@ -32,9 +32,12 @@ jobs:
           TIPO_PROCESO_ACTIVO : ${{ secrets.TIPO_PROCESO_ACTIVO }}
         run: python seace_monitor.py
 
-      - name: 📊 Guardar Excel como artefacto
+        - name: 📊 Guardar artefactos
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: SEACE-Reporte-${{ github.run_number }}
-          path: /tmp/SEACE_Oportunidades_*.xlsx
+          path: |
+            /tmp/SEACE_Oportunidades_*.xlsx
+            /tmp/debug_respuesta_seace.txt
           retention-days: 7
