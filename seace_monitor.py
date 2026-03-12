@@ -210,52 +210,81 @@ def guardar_excel(resultados):
 def enviar_correo(resultados, ruta_excel):
     total = len(resultados.get("Todos los Rubros", []))
     fecha = datetime.now().strftime("%d/%m/%Y")
-    iconos = {"Tecnologia":"💻","Limpieza":"🧹","Computo y TI":"🖥️","Ferreteria":"🔧"}
-    colores_bg = {"Tecnologia":"#e8f5e9","Limpieza":"#fff9c4",
-                  "Computo y TI":"#e3f2fd","Ferreteria":"#fce4ec"}
+    iconos     = {"Tecnologia": "💻", "Limpieza": "🧹",
+                  "Computo y TI": "🖥", "Ferreteria": "🔧"}
+    colores_bg = {"Tecnologia": "#e8f5e9", "Limpieza": "#fff9c4",
+                  "Computo y TI": "#e3f2fd", "Ferreteria": "#fce4ec"}
+    color_def  = "#f5f5f5"
+    icono_def  = "📁"
 
-    filas = "".join(
-        f"<tr style='background:{colores_bg.get(r,\"#f5f5f5\")}'>"
-        f"<td style='padding:8px'>{iconos.get(r,'📁')} {r}</td>"
-        f"<td style='padding:8px;text-align:center;font-size:18px'><b>{len(l)}</b></td></tr>"
-        for r, l in resultados.items() if r != "Todos los Rubros"
-    )
-    top_ops = "".join(
-        f"<tr><td style='padding:6px'>{o.get('Entidad','')[:40]}</td>"
-        f"<td style='padding:6px'>{o.get('Descripcion','')[:55]}...</td>"
-        f"<td style='padding:6px'>{o.get('Valor (S/.)','')}</td>"
-        f"<td style='padding:6px'>{o.get('Rubro','')}</td></tr>"
-        for o in resultados.get("Todos los Rubros", [])[:8]
+    # ── Filas resumen ──
+    filas_list = []
+    for r, l in resultados.items():
+        if r == "Todos los Rubros":
+            continue
+        bg  = colores_bg.get(r, color_def)
+        ico = iconos.get(r, icono_def)
+        filas_list.append(
+            f"<tr style='background:{bg}'>"
+            f"<td style='padding:8px'>{ico} {r}</td>"
+            f"<td style='padding:8px;text-align:center;font-size:18px'><b>{len(l)}</b></td>"
+            f"</tr>"
+        )
+    filas = "".join(filas_list)
+
+    # ── Top 8 oportunidades ──
+    top_list = []
+    for o in resultados.get("Todos los Rubros", [])[:8]:
+        entidad = o.get("Entidad", "")[:40]
+        desc    = o.get("Descripcion", "")[:55]
+        monto   = o.get("Valor (S/.)", "")
+        rubro   = o.get("Rubro", "")
+        top_list.append(
+            f"<tr>"
+            f"<td style='padding:6px'>{entidad}</td>"
+            f"<td style='padding:6px'>{desc}...</td>"
+            f"<td style='padding:6px'>{monto}</td>"
+            f"<td style='padding:6px'>{rubro}</td>"
+            f"</tr>"
+        )
+    top_ops = "".join(top_list) if top_list else (
+        "<tr><td colspan='4' style='padding:15px;text-align:center'>"
+        "Sin oportunidades hoy</td></tr>"
     )
 
-    html = f"""<html><body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:20px">
-    <div style="max-width:780px;margin:auto;background:white;border-radius:8px;overflow:hidden">
-      <div style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:28px;color:white;text-align:center">
-        <h1 style="margin:0">🏛️ Monitor SEACE - Lima</h1>
-        <p style="margin:8px 0 0">Reporte Diario · {fecha}</p>
-      </div>
-      <div style="padding:20px">
-        <h2 style="color:#1a73e8">📊 Resumen por Rubro</h2>
-        <table style="width:100%;border-collapse:collapse">
-          <tr style="background:#1a73e8;color:white"><th style="padding:10px">Rubro</th><th style="padding:10px">Oportunidades</th></tr>
-          {filas}
-          <tr style="background:#e8eaf6"><td style="padding:10px"><b>📊 TOTAL</b></td>
-          <td style="padding:10px;text-align:center;font-size:20px;color:#1a73e8"><b>{total}</b></td></tr>
-        </table>
-        <h2 style="color:#1a73e8;margin-top:25px">🔝 Top 8 Oportunidades</h2>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <tr style="background:#1a73e8;color:white">
-            <th style="padding:8px">Entidad</th><th style="padding:8px">Descripcion</th>
-            <th style="padding:8px">Monto</th><th style="padding:8px">Rubro</th>
-          </tr>
-          {top_ops or "<tr><td colspan='4' style='padding:15px;text-align:center'>Sin oportunidades hoy</td></tr>"}
-        </table>
-        <p style="color:#666;font-size:12px;margin-top:20px">
-          📎 Excel adjunto con detalle completo<br>
-          🔗 <a href="https://prodapp2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml">Ir al SEACE</a>
-        </p>
-      </div>
-    </div></body></html>"""
+    html = (
+        "<html><body style='font-family:Arial,sans-serif;background:#f5f5f5;padding:20px'>"
+        "<div style='max-width:780px;margin:auto;background:white;border-radius:8px;overflow:hidden'>"
+        "<div style='background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:28px;"
+        "color:white;text-align:center'>"
+        "<h1 style='margin:0'>🏛 Monitor SEACE - Lima</h1>"
+        f"<p style='margin:8px 0 0'>Reporte Diario - {fecha}</p>"
+        "</div><div style='padding:20px'>"
+        "<h2 style='color:#1a73e8'>📊 Resumen por Rubro</h2>"
+        "<table style='width:100%;border-collapse:collapse'>"
+        "<tr style='background:#1a73e8;color:white'>"
+        "<th style='padding:10px'>Rubro</th>"
+        "<th style='padding:10px'>Oportunidades</th></tr>"
+        + filas +
+        "<tr style='background:#e8eaf6'>"
+        "<td style='padding:10px'><b>📊 TOTAL</b></td>"
+        f"<td style='padding:10px;text-align:center;font-size:20px;color:#1a73e8'><b>{total}</b></td>"
+        "</tr></table>"
+        "<h2 style='color:#1a73e8;margin-top:25px'>🔝 Top 8 Oportunidades</h2>"
+        "<table style='width:100%;border-collapse:collapse;font-size:13px'>"
+        "<tr style='background:#1a73e8;color:white'>"
+        "<th style='padding:8px'>Entidad</th>"
+        "<th style='padding:8px'>Descripcion</th>"
+        "<th style='padding:8px'>Monto</th>"
+        "<th style='padding:8px'>Rubro</th></tr>"
+        + top_ops +
+        "</table>"
+        "<p style='color:#666;font-size:12px;margin-top:20px'>"
+        "📎 Excel adjunto con detalle completo<br>"
+        "🔗 <a href='https://prodapp2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/"
+        "buscadorPublico.xhtml'>Ir al SEACE</a></p>"
+        "</div></div></body></html>"
+    )
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"SEACE Lima - {total} Oportunidades ({fecha})"
@@ -268,20 +297,23 @@ def enviar_correo(resultados, ruta_excel):
             part = MIMEBase("application", "octet-stream")
             part.set_payload(f.read())
             encoders.encode_base64(part)
-            part.add_header("Content-Disposition",
-                            f"attachment; filename={os.path.basename(ruta_excel)}")
+            part.add_header(
+                "Content-Disposition",
+                f"attachment; filename={os.path.basename(ruta_excel)}"
+            )
             msg.attach(part)
+
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
             s.login(CORREO_REMITENTE, CORREO_CONTRASENA)
             s.sendmail(CORREO_REMITENTE, CORREO_DESTINO, msg.as_string())
-        print(f"[Correo] ✅ Enviado a {CORREO_DESTINO}")
+        print(f"[Correo] Enviado a {CORREO_DESTINO}")
     except Exception as e:
-        print(f"[Correo] ❌ Error: {e}")
-
+        print(f"[Correo] Error: {e}")
 # ==== MAIN ====
 if __name__ == "__main__":
     datos   = buscar_en_seace()
     archivo = guardar_excel(datos)
     enviar_correo(datos, archivo)
     print("\n[FIN] Ejecucion completada.")
+
