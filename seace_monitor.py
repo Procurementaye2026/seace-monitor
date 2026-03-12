@@ -9,6 +9,25 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+import ssl
+import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
+
+# Silenciar advertencias SSL (el servidor SEACE usa certificado antiguo)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Adaptador especial para servidores con DH key pequeña (SEACE)
+class SeaceSSLAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = create_urllib3_context()
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        kwargs["ssl_context"] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+
 # ==== CONFIGURACION ====
 CORREO_REMITENTE    = os.getenv("CORREO_REMITENTE", "")
 CORREO_CONTRASENA   = os.getenv("CORREO_CONTRASENA", "")
@@ -58,7 +77,7 @@ def limpiar_monto(valor):
 def obtener_viewstate(session):
     """Obtiene cookies y ViewState del buscador JSF"""
     try:
-        r = session.get(URL_BUSCADOR, timeout=20,
+         r = session.get(URL_BUSCADOR, timeout=20, verify=False,
                         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         soup = BeautifulSoup(r.text, "html.parser")
         vs = soup.find("input", {"name": "javax.faces.ViewState"})
@@ -92,7 +111,7 @@ def buscar_palabra(session, viewstate, palabra, codigo_dpto="15"):
             "Origin": "https://prodapp2.seace.gob.pe",
             "Referer": URL_BUSCADOR,
         }
-        r = session.post(URL_BUSCADOR, data=payload, headers=headers, timeout=25)
+       r = session.post(URL_BUSCADOR, data=payload, headers=headers, timeout=15, verify=False)
         if r.status_code == 200 and len(r.text) > 100:
             soup = BeautifulSoup(r.text, "html.parser")
             filas = soup.find_all("tr", class_=re.compile(r"ui-widget-content|fila"))
@@ -127,7 +146,8 @@ def buscar_en_seace():
     desc_vistos = set()
 
     session = requests.Session()
-    session.headers.update({"Accept-Language": "es-PE,es;q=0.9"})
+    session.mount("https://", SeaceSSLAdapter())
+    session.headers.update({"Accept-Language": "es-PE,es;q=0.9"})9"})
 
     print("\n[1] Obteniendo sesion del buscador SEACE...")
     viewstate = obtener_viewstate(session)
@@ -316,4 +336,5 @@ if __name__ == "__main__":
     archivo = guardar_excel(datos)
     enviar_correo(datos, archivo)
     print("\n[FIN] Ejecucion completada.")
+
 
